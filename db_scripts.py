@@ -1,29 +1,20 @@
 # For setting up and populating data base
 import json
 import requests
+from pymongo import MongoClient
 
 
 API_URL = 'https://mainnet-idx.algonode.cloud'
 BLOCK_ENDPOINT = '/v2/blocks/'
 TX_FIELDS = ["id", "tx-type", "sender", "fee", "confirmed-round", "group", "inner-txns"]
 
+
 def fetch_blocks(start: int, end: int) -> list:
   data = []
   for block_nr in range(start, end+1):
     block = requests.get(API_URL+BLOCK_ENDPOINT+f"{block_nr}").json()
-    for tx in block:
-      data.append(field_filter(transaction=tx))
+    data.append(block)
   return data
-
-fetched_data = fetch_blocks(30441537,30441636)
-
-
-with open('data/mongo/raw_data.json', 'w', encoding='utf-8') as f:
-    json.dump(fetched_data, f, ensure_ascii=False, indent=4)
-
-
-with open("data/mongo/raw_data.json") as file:
-  blocks = json.load(file)
 
 
 def field_filter(transaction: dict) -> dict:
@@ -47,14 +38,31 @@ def field_filter(transaction: dict) -> dict:
       filtered_tx[field] = "N/A"
   return filtered_tx
 
+################## Fetch, clean, store data as JSON files ######################
+
+blocks = fetch_blocks(30441537,30441636)
+with open('data/mongo/raw_data.json', 'w', encoding='utf-8') as f:
+    json.dump(blocks, f, ensure_ascii=False, indent=4)
+
+txns = [] # clean transactions
 with open('data/mongo/clean_data.json', 'w', encoding='utf-8') as f:
-  txns = []
   for block in blocks:
     for tx in block['transactions']:
       txns.append(field_filter(transaction=tx))
   json.dump(txns, f, ensure_ascii=False, indent=4)
 
+######################### Set up MongoDB database ##############################
 
+mongo_client = MongoClient("localhost", 27017)
+mock_db = mongo_client['defi_mock_db']
+tx_col = mock_db['transactions']
+
+# with open("data/mongo/clean_data.json") as file:
+#   txns = json.load(file)
+
+tx_col.insert_many(txns)
+
+mongo_client.close()
 exit()
 
 
