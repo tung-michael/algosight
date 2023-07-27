@@ -2,21 +2,61 @@
 import json
 import requests
 
+
 API_URL = 'https://mainnet-idx.algonode.cloud'
 BLOCK_ENDPOINT = '/v2/blocks/'
-
+TX_FIELDS = ["id", "tx-type", "sender", "fee", "confirmed-round", "group", "inner-txns"]
 
 def fetch_blocks(start: int, end: int) -> list:
   data = []
   for block_nr in range(start, end+1):
-    response = requests.get(API_URL+BLOCK_ENDPOINT+f"{block_nr}").json()
-    data.append(response)
+    block = requests.get(API_URL+BLOCK_ENDPOINT+f"{block_nr}").json()
+    for tx in block:
+      data.append(field_filter(transaction=tx))
   return data
 
-data = fetch_blocks(30441537,30441636)
+fetched_data = fetch_blocks(30441537,30441636)
 
-with open('data/data.json', 'w', encoding='utf-8') as f:
-    json.dump(data, f, ensure_ascii=False, indent=4)
+
+with open('data/mongo/raw_data.json', 'w', encoding='utf-8') as f:
+    json.dump(fetched_data, f, ensure_ascii=False, indent=4)
+
+
+with open("data/mongo/raw_data.json") as file:
+  blocks = json.load(file)
+
+
+def field_filter(transaction: dict) -> dict:
+  filtered_tx = {}
+  match transaction["tx-type"]:
+    case "appl":
+      filtered_tx["application-transaction"] = transaction["application-transaction"]
+    case "axfer":
+      filtered_tx["asset-transfer-transaction"] = transaction["asset-transfer-transaction"]
+    case "pay":
+      filtered_tx["payment-transaction"] = transaction["payment-transaction"]
+  for field in TX_FIELDS:
+    if field in transaction.keys():
+      if field == "inner-txns":
+        filtered_tx["inner-txns"] = []
+        for tx in transaction["inner-txns"]:
+          filtered_tx["inner-txns"].append( field_filter(transaction=tx))
+      else:
+        filtered_tx[field] = transaction[field]
+    else:
+      filtered_tx[field] = "N/A"
+  return filtered_tx
+
+with open('data/mongo/clean_data.json', 'w', encoding='utf-8') as f:
+  txns = []
+  for block in blocks:
+    for tx in block['transactions']:
+      txns.append(field_filter(transaction=tx))
+  json.dump(txns, f, ensure_ascii=False, indent=4)
+
+
+exit()
+
 
 
 class DataRetriever:
