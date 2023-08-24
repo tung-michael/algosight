@@ -21,11 +21,12 @@ PAY_TX_FIELDS =[
 BATCH_SIZE = 1000 # number of blocks fetched and processed in a batch
 DATA_DIR = "data/mongo/staging/"
 
-#[TODO]: code refactoring to use this script from command line?
+PG_CONFIG = 'postgres_config/database.ini'
+
 
 ############## Data collection and pre-processing JSON files ###################
 
-# collect raw data (JSON)
+# collect raw data
 def fetch_blocks(start: int, end: int) -> list:
   data = []
   for block_nr in range(start, end+1):
@@ -111,13 +112,20 @@ import csv
 
 # Aggregated data derive from data in MongoDB. To be saved as csv files.
 appl_usage = [["app_id", "round_time", "related_tx", "inner_tx_level"]]
-asset_usage = [["asset_id", "amount", "round_time", "related_tx","inner_tx_level"]]
+asset_usage = [
+  [
+    "asset_id",
+    # "amount",
+    "round_time", "related_tx","inner_tx_level"
+    ]
+  ]
 
 def convert_datetime(timestamp: int):
   dt_object = dt.fromtimestamp(timestamp)
   converted_time = dt_object.strftime("%Y-%m-%d %H:%M:%S")
   return converted_time
 
+# create an entry in either appl_usage or asset_usage for each transaction of that type
 def generate_postgre_data(transaction: dict, level: int=0, parent_id: int=None):
   related_tx = transaction['id'] if parent_id==None else parent_id
   match transaction['tx-type']:
@@ -131,7 +139,7 @@ def generate_postgre_data(transaction: dict, level: int=0, parent_id: int=None):
     case 'axfer':
       asset_usage.append([
         transaction['asset-transfer-transaction']['asset-id'],
-        transaction['asset-transfer-transaction']['amount'],
+        # transaction['asset-transfer-transaction']['amount'],
         convert_datetime(transaction['round-time']),
         related_tx,
         level
@@ -150,14 +158,6 @@ def save_csv_data(
     writer = csv.writer(file)
     writer.writerows(data)
 
-
-# with open('data/postgres/appl_usage.csv', mode='w', newline='') as file:
-#   writer = csv.writer(file)
-#   writer.writerows(appl_usage)
-
-# with open('data/postgres/asset_usage.csv', mode='w', newline='') as file:
-#   writer = csv.writer(file)
-#   writer.writerows(asset_usage)
 
 ################## Setup & Load data to PostgreSQL database ####################
 import configparser
@@ -182,11 +182,9 @@ def pg_parameters_extract (filename: str) -> dict:
     raise ValueError(f'Section postgresql not found in the {filename} file.')
   return pg_params
 
-
-
-def populate_new_table(file_path: str):
-  table_name = os.path.splitext(os.path.basename(file_path))[0]
-  with open(file_path,"r", newline="") as f:
+def populate_new_table(data_file: str):
+  table_name = os.path.splitext(os.path.basename(data_file))[0]
+  with open(data_file,"r", newline="") as f:
     next(f) # Skip the header row
     cursor.copy_from(file=f, table=table_name,sep=',')
 
@@ -202,15 +200,10 @@ def get_meta_data(dataset: str = "1 day data"):
 if __name__ == '__main__':
 
   # Data collection and pre-processing (1)
-  # meta_data = get_meta_data(dataset="1 day data")
-  # start_block = meta_data["start block"]
-  # start_block = 29476143
-  # end_block = meta_data["end block"]
-  # crawl_data(start=start_block, end=end_block)
-  crawl_data(start=29487143,end=29488142)
-
-  # [TODO] Data collection (2)
-    # [TODO] fetch relational data
+  meta_data = get_meta_data(dataset="1 day data")
+  start_block = meta_data["start block"]
+  end_block = meta_data["end block"]
+  crawl_data(start=start_block, end=end_block)
 
   # Set up MongoDB database
   mongo_client = MongoClient("localhost", 27017)
@@ -218,19 +211,18 @@ if __name__ == '__main__':
   tx_collection = mock_db['transactions']
   mongo_digest(collection=tx_collection)
 
-  # tx_collection.insert_many(txns)
-
   # extract transactions as list
   mongo_txns = list(tx_collection.find({}))
   mongo_client.close()
 
-  exit()
   # Prepare data for Postgres
   for tx in mongo_txns:
     generate_postgre_data(transaction=tx)
+  save_csv_data(data=appl_usage, filename="appl_usage.csv")
+  save_csv_data(data=asset_usage, filename="asset_usage.csv")
 
   # Setup Postgres
-  pg_params = pg_parameters_extract('data/postgres/database.ini')
+  pg_params = pg_parameters_extract(PG_CONFIG)
 
   conn = psycopg2.connect(
       dbname=pg_params["dbname"],
@@ -242,8 +234,9 @@ if __name__ == '__main__':
   cursor = conn.cursor()
 
   # Load data to Postgres
-  populate_new_table(file_path='data/postgres/appl_usage.csv')
-  populate_new_table(file_path='data/postgres/asset_usage.csv')
+  populate_new_table(data_file='data/postgres/appl_usage.csv')
+  populate_new_table(data_file='data/postgres/asset_usage.csv')
+  populate_new_table(data_file='data/postgres/dexs.csv')
 
   conn.commit()
   conn.close()
