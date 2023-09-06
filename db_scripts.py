@@ -2,7 +2,7 @@
 import json
 import requests
 from pymongo import MongoClient
-
+import time
 
 API_URL = 'https://mainnet-idx.algonode.cloud'
 BLOCK_ENDPOINT = '/v2/blocks/'
@@ -22,12 +22,40 @@ BATCH_SIZE = 1000 # number of blocks fetched and processed in a batch
 DATA_DIR = "data/mongo/staging/"
 
 PG_CONFIG = 'postgres_config/database.ini'
-
+MONG_DB = {
+  "host": "localhost",
+  "port": 27017,
+  "database": "defi_mock_db",
+  "collection": "transactions"
+}
 
 ############## Data collection and pre-processing JSON files ###################
 
 # collect raw data
+
+# new implementation of fetch_blocks
 def fetch_blocks(start: int, end: int) -> list:
+  data = []
+  for block_nr in range(start, end+1):
+    for attempt in range(3):  # Retry up to 3 times
+      response = requests.get(API_URL+BLOCK_ENDPOINT+f"{block_nr}")
+      if response.status_code == 200:
+        try:
+          block = response.json()
+          data.append(block)
+          break
+        except json.JSONDecodeError:
+          logging.error(f"Failed to decode JSON response for block {block_nr} on attempt {attempt+1}: {response.text}")
+          time.sleep(1)  # Sleep for 1 second before retrying
+      else:
+        logging.error(f"Failed to fetch block {block_nr} on attempt {attempt+1}: {response.status_code}")
+        time.sleep(1)  # Sleep for 1 second before retrying
+    else:
+        logging.error(f"Failed to fetch block {block_nr} after 3 attempts.")
+  return data
+
+# old implementation of fetch_blocks
+def fetch_blocks_old(start: int, end: int) -> list:
   data = []
   for block_nr in range(start, end+1):
     block = requests.get(API_URL+BLOCK_ENDPOINT+f"{block_nr}").json()
@@ -82,7 +110,7 @@ def crawl_data(start: int, end: int):
           txns.append(data_filtering(transaction=tx))
     file_name = f"blocks_{start}_{last}"
 
-    # save filterd data as JSON file
+    # save filtered data as JSON file
     with open(f'{DATA_DIR}{file_name}.json', 'w', encoding='utf-8') as f:
       json.dump(txns, f, ensure_ascii=False, indent=4)
 
@@ -93,8 +121,57 @@ def crawl_data(start: int, end: int):
     del txns
     del data
 
+################# No intermediate saved data file #########################
+import logging
+MONGO_LOG = "data/mongo/data_ingestion.log"
+
+def crawl_and_ingestion(start: int, end: int, db_info: dict):
+  # setup logging
+  logging.basicConfig(
+    filename=MONGO_LOG,
+    filemode='a',
+    format='%(asctime)s.%(msecs)d %(levelname)s %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    level=logging.INFO
+  )
+  logging.info("STARTING PROCESS...")
+  # open connection to database
+  # [TODO] change to read value from db_info
+  mongo_client = MongoClient("localhost", 27017)
+  mock_db = mongo_client['defi_mock_db']
+  tx_collection = mock_db['staging_transactions']
+
+  # crawl and load data to database
+  while start < end+1:
+    # collecting data in batch
+    last = min (start+BATCH_SIZE-1, end) # last block in a batch
+    raw_blocks = fetch_blocks(start=start, end=last)
+
+    # preprocessing
+    txns = []
+    for block in raw_blocks:
+      for tx in block['transactions']:
+        txns.append(data_filtering(transaction=tx))
+
+    # data ingestion and logging
+    tx_collection.insert_many(txns)
+    batch_name = f"blocks_{start}_{last}"
+    log_message = f"{batch_name}"
+    logging.info(log_message)
+
+    # setup / cleanup parameters for next batch
+    start = last+1
+    txns.clear()
+    raw_blocks.clear()
+    del txns
+    del raw_blocks
+
+  # close connection to database
+  logging.info("ENDING PROCESS...")
+  mongo_client.close()
 ################# Load data to Mongo #########################
-def mongo_digest(
+
+def mongo_ingestion(
     collection,
     data_dir: str = DATA_DIR
   ):
@@ -200,16 +277,21 @@ def get_meta_data(dataset: str = "1 day data"):
 if __name__ == '__main__':
 
   # Data collection and pre-processing (1)
-  meta_data = get_meta_data(dataset="1 day data")
+  meta_data = get_meta_data(dataset="1 month data")
   start_block = meta_data["start block"]
   end_block = meta_data["end block"]
+
+  start_block = 29709143
+  crawl_and_ingestion(start=start_block, end=end_block, db_info={})
+
+  exit()
   crawl_data(start=start_block, end=end_block)
 
   # Set up MongoDB database
   mongo_client = MongoClient("localhost", 27017)
   mock_db = mongo_client['defi_mock_db']
   tx_collection = mock_db['transactions']
-  mongo_digest(collection=tx_collection)
+  mongo_ingestion(collection=tx_collection)
 
   # extract transactions as list
   mongo_txns = list(tx_collection.find({}))
