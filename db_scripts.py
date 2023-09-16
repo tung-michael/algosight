@@ -1,11 +1,15 @@
-# For setting up and populating data base
 import json
 import requests
 from pymongo import MongoClient
 import time
+import logging
 
+# For data collection
 API_URL = 'https://mainnet-idx.algonode.cloud'
 BLOCK_ENDPOINT = '/v2/blocks/'
+BATCH_SIZE = 1000 # number of blocks fetched and processed in a batch
+
+# For data preprocessing
 TX_FIELDS = [
   "id", "tx-type", "sender", "fee",
   "confirmed-round", "group", "inner-txns", "round-time"
@@ -13,27 +17,29 @@ TX_FIELDS = [
 APPL_TX_FIELDS =[
   "accounts", "application-id", "foreign-apps", "foreign-assets"
 ]
-
 PAY_TX_FIELDS =[
   "accounts", "application-id", "foreign-apps", "foreign-assets"
 ]
 
-BATCH_SIZE = 1000 # number of blocks fetched and processed in a batch
-DATA_DIR = "data/mongo/staging/"
 
-PG_CONFIG = 'postgres_config/database.ini'
-MONG_DB = {
+# For databases interaction
+PG_CONFIG = 'pg_setup/database.ini'
+PG_LOG = "logs/pg_etl/etl.log"
+
+MONGO_CONFIG = ''
+MONGO_LOG = "logs/mongo_ingestion/ingestion.log"
+MONGO_DB = {
   "host": "localhost",
   "port": 27017,
   "database": "defi_mock_db",
-  "collection": "transactions"
+  "collection": "staging_transactions"
+  # "collection": "transactions"
 }
 
-############## Data collection and pre-processing JSON files ###################
 
-# collect raw data
+############## Data collection, pre-processing and ingestion (MongoDB) ###################
 
-# new implementation of fetch_blocks
+# Collect raw block data from AlgoNode API
 def fetch_blocks(start: int, end: int) -> list:
   data = []
   for block_nr in range(start, end+1):
@@ -54,16 +60,8 @@ def fetch_blocks(start: int, end: int) -> list:
         logging.error(f"Failed to fetch block {block_nr} after 3 attempts.")
   return data
 
-# old implementation of fetch_blocks
-def fetch_blocks_old(start: int, end: int) -> list:
-  data = []
-  for block_nr in range(start, end+1):
-    block = requests.get(API_URL+BLOCK_ENDPOINT+f"{block_nr}").json()
-    data.append(block)
-  return data
-
-# pre-process raw data -> filtered data(JSON)
-def data_filtering(transaction: dict) -> dict:
+# Pre-process raw data
+def filter_tx_data(transaction: dict) -> dict:
   filtered_tx = {}
   match transaction["tx-type"]:
     case "appl":
@@ -89,43 +87,15 @@ def data_filtering(transaction: dict) -> dict:
       if field == "inner-txns":
         filtered_tx["inner-txns"] = []
         for tx in transaction["inner-txns"]:
-          filtered_tx["inner-txns"].append(data_filtering(transaction=tx))
+          filtered_tx["inner-txns"].append(filter_tx_data(transaction=tx))
       else:
         filtered_tx[field] = transaction[field]
     else:
       filtered_tx[field] = "N/A"
   return filtered_tx
 
-
-def crawl_data(start: int, end: int):
-  while start < end+1:
-    # collecting data in batch
-    last = min (start+BATCH_SIZE-1, end) # last block in a batch
-    data = fetch_blocks(start=start, end=last)
-
-    # preprocessing
-    txns = []
-    for block in data:
-      for tx in block['transactions']:
-          txns.append(data_filtering(transaction=tx))
-    file_name = f"blocks_{start}_{last}"
-
-    # save filtered data as JSON file
-    with open(f'{DATA_DIR}{file_name}.json', 'w', encoding='utf-8') as f:
-      json.dump(txns, f, ensure_ascii=False, indent=4)
-
-    # setup / cleanup parameters for next batch
-    start = last+1
-    txns.clear()
-    data.clear()
-    del txns
-    del data
-
-################# No intermediate saved data file #########################
-import logging
-MONGO_LOG = "data/mongo/data_ingestion.log"
-
-def crawl_and_ingestion(start: int, end: int, db_info: dict):
+# Collection, preprocess and ingestion to MongoDB
+def collect_and_ingest(start: int, end: int, db_info: dict):
   # setup logging
   logging.basicConfig(
     filename=MONGO_LOG,
@@ -151,12 +121,11 @@ def crawl_and_ingestion(start: int, end: int, db_info: dict):
     txns = []
     for block in raw_blocks:
       for tx in block['transactions']:
-        txns.append(data_filtering(transaction=tx))
+        txns.append(filter_tx_data(transaction=tx))
 
     # data ingestion and logging
     tx_collection.insert_many(txns)
-    batch_name = f"blocks_{start}_{last}"
-    log_message = f"{batch_name}"
+    log_message = f"processing blocks_{start}_{last}"
     logging.info(log_message)
 
     # setup / cleanup parameters for next batch
@@ -169,18 +138,7 @@ def crawl_and_ingestion(start: int, end: int, db_info: dict):
   # close connection to database
   logging.info("ENDING PROCESS...")
   mongo_client.close()
-################# Load data to Mongo #########################
 
-def mongo_ingestion(
-    collection,
-    data_dir: str = DATA_DIR
-  ):
-  for filename in os.listdir(data_dir):
-    if filename.endswith(".json"):
-      file_path = os.path.join(data_dir, filename)
-      with open(file_path) as file:
-        data = json.load(file)
-        collection.insert_many(data)
 
 ################# Prepare data for PostgreSQL database #########################
 
@@ -188,14 +146,15 @@ from datetime import datetime as dt
 import csv
 
 # Aggregated data derive from data in MongoDB. To be saved as csv files.
-appl_usage = [["app_id", "round_time", "related_tx", "inner_tx_level"]]
-asset_usage = [
-  [
-    "asset_id",
-    # "amount",
-    "round_time", "related_tx","inner_tx_level"
-    ]
+APP_CALLS_COLS = ["app_id", "round_time", "related_tx", "inner_tx_level"]
+ASSET_TRANSFER_TXNS_COLS = [
+  "asset_id",
+  "amount",
+  "round_time", "related_tx","inner_tx_level"
   ]
+
+app_usage =[]
+asset_usage = []
 
 def convert_datetime(timestamp: int):
   dt_object = dt.fromtimestamp(timestamp)
@@ -207,7 +166,7 @@ def generate_postgre_data(transaction: dict, level: int=0, parent_id: int=None):
   related_tx = transaction['id'] if parent_id==None else parent_id
   match transaction['tx-type']:
     case 'appl':
-      appl_usage.append([
+      app_usage.append([
         transaction['application-transaction']['application-id'],
         convert_datetime(transaction['round-time']),
         related_tx,
@@ -216,7 +175,7 @@ def generate_postgre_data(transaction: dict, level: int=0, parent_id: int=None):
     case 'axfer':
       asset_usage.append([
         transaction['asset-transfer-transaction']['asset-id'],
-        # transaction['asset-transfer-transaction']['amount'],
+        int(transaction['asset-transfer-transaction']['amount']),
         convert_datetime(transaction['round-time']),
         related_tx,
         level
@@ -225,20 +184,8 @@ def generate_postgre_data(transaction: dict, level: int=0, parent_id: int=None):
     for tx in transaction['inner-txns']:
       generate_postgre_data(transaction=tx, level=level+1, parent_id=related_tx)
 
-def save_csv_data(
-    data: list[list[str]],
-    filename: str,
-    directory: str ='data/postgres/'
-  ):
-  file_path = directory + filename
-  with open(file_path, mode='w', newline='') as file:
-    writer = csv.writer(file)
-    writer.writerows(data)
-
-
 ################## Setup & Load data to PostgreSQL database ####################
 import configparser
-import os
 import psycopg2
 
 def pg_parameters_extract (filename: str) -> dict:
@@ -259,53 +206,53 @@ def pg_parameters_extract (filename: str) -> dict:
     raise ValueError(f'Section postgresql not found in the {filename} file.')
   return pg_params
 
-def populate_new_table(data_file: str):
-  table_name = os.path.splitext(os.path.basename(data_file))[0]
-  with open(data_file,"r", newline="") as f:
-    next(f) # Skip the header row
-    cursor.copy_from(file=f, table=table_name,sep=',')
+
+################# ETL pipeline from MongoDB to PostgreSQL database #########################
+
+ETL_BATCH_SIZE = 50000
+from io import StringIO
+
+def batch_insert_to_pg(
+  table_name: str,
+  col_names: list,
+  data: list,
+  pg_connection
+  ):
+  try:
+    entries = len(data)
+    # Create an in-memory file object and write on it
+    buffer = StringIO()
+    writer = csv.writer(buffer)
+    writer.writerows(data) # After this step, buffer cursor is at the end of the "file"
+
+    # Move the buffer cursor back to the start of the "file"
+    buffer.seek(0)
+
+    # Load data from buffer to Postgres
+    cursor = pg_connection.cursor()
+    cursor.copy_from(file=buffer, table=table_name, columns=col_names, sep=',')
+    pg_connection.commit()
+    logging.info(f"Inserted {entries} new entries to {table_name}")
+  except Exception as e:
+    logging.error(f"{e}")
+    pg_connection.rollback()
+
+  finally:
+    buffer.close()
 
 
-################################################################################
-def get_meta_data(dataset: str = "1 day data"):
-  with open('data/meta_data.json','r') as f:
-    meta_data = json.load(f)[dataset]
-  return meta_data
+def etl_mongo_to_postgres():
 
-# def run_db_scripts(blocknr_start: int, blocknr_end: int):
-
-if __name__ == '__main__':
-
-  # Data collection and pre-processing (1)
-  meta_data = get_meta_data(dataset="1 month data")
-  start_block = meta_data["start block"]
-  end_block = meta_data["end block"]
-
-  start_block = 29709143
-  crawl_and_ingestion(start=start_block, end=end_block, db_info={})
-
-  exit()
-  crawl_data(start=start_block, end=end_block)
-
-  # Set up MongoDB database
-  mongo_client = MongoClient("localhost", 27017)
-  mock_db = mongo_client['defi_mock_db']
-  tx_collection = mock_db['transactions']
-  mongo_ingestion(collection=tx_collection)
-
-  # extract transactions as list
-  mongo_txns = list(tx_collection.find({}))
-  mongo_client.close()
-
-  # Prepare data for Postgres
-  for tx in mongo_txns:
-    generate_postgre_data(transaction=tx)
-  save_csv_data(data=appl_usage, filename="appl_usage.csv")
-  save_csv_data(data=asset_usage, filename="asset_usage.csv")
-
-  # Setup Postgres
+  # setup log
+  logging.basicConfig(
+    filename=PG_LOG,
+    filemode='a',
+    format='%(asctime)s.%(msecs)d %(levelname)s %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    level=logging.INFO
+  )
+  # access Postgres
   pg_params = pg_parameters_extract(PG_CONFIG)
-
   conn = psycopg2.connect(
       dbname=pg_params["dbname"],
       user=pg_params["user"],
@@ -313,12 +260,66 @@ if __name__ == '__main__':
       host=pg_params["host"],
       port=pg_params["port"]
   )
-  cursor = conn.cursor()
 
-  # Load data to Postgres
-  populate_new_table(data_file='data/postgres/appl_usage.csv')
-  populate_new_table(data_file='data/postgres/asset_usage.csv')
-  populate_new_table(data_file='data/postgres/dexs.csv')
+  # access Mongo
+  mongo_client = MongoClient(MONGO_DB["host"], MONGO_DB["port"])
+  mock_db = mongo_client[MONGO_DB["database"]]
+  tx_collection = mock_db[MONGO_DB["collection"]]
 
-  conn.commit()
+  # ETL run in batch
+  total_entries = tx_collection.count_documents({})
+  logging.info("STARTING ETL PIPELINE...")
+  logging.info(f"Total: {total_entries} documents")
+
+
+  for start_docs in range(0,total_entries, ETL_BATCH_SIZE):
+    # Extract a batch of transactions
+    mongo_txns = list(tx_collection.find({}).skip(start_docs).limit(ETL_BATCH_SIZE))
+    log_message = f"Processing documents {start_docs+1} to {start_docs+len(mongo_txns)} of {total_entries} documents"
+    logging.info(log_message)
+
+    # Transformation
+    for tx in mongo_txns:
+      generate_postgre_data(transaction=tx)
+
+    # Load in batch
+    batch_insert_to_pg(
+      table_name="app_calls",
+      col_names=APP_CALLS_COLS,
+      data=app_usage,
+      pg_connection=conn
+      )
+
+    batch_insert_to_pg(
+      table_name="asset_transfer_txns",
+      col_names=ASSET_TRANSFER_TXNS_COLS,
+      data=asset_usage,
+      pg_connection=conn
+      )
+
+    # reset for next batch
+    app_usage.clear()
+    asset_usage.clear()
+
+  logging.info("ETL COMPLETED.")
   conn.close()
+
+
+####################### Extract dataset metadata #######################################
+def get_meta_data(dataset: str = "1 day data"):
+  with open('data/meta_data.json','r') as f:
+    meta_data = json.load(f)[dataset]
+  return meta_data
+
+
+if __name__ == '__main__':
+
+  # # Data collection, pre-processing and ingestion (Mongo)
+  # meta_data = get_meta_data(dataset="1 month data")
+  # start_block = meta_data["start block"]
+  # end_block = meta_data["end block"]
+
+  # collect_and_ingest(start=start_block, end=end_block, db_info={})
+
+  # Run ETL pipeline
+  etl_mongo_to_postgres()
