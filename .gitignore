@@ -1,3 +1,5 @@
 defi_venv
 __pycache__
 .vscode
+sql_queries/*
+z_deprecated
