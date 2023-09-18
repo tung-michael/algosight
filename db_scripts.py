@@ -23,7 +23,7 @@ PAY_TX_FIELDS =[
 
 
 # For databases interaction
-PG_CONFIG = 'pg_setup/database.ini'
+PG_CONFIG = 'postgres/setup/database.ini'
 PG_LOG = "logs/pg_etl/etl.log"
 
 MONGO_CONFIG = ''
@@ -184,7 +184,7 @@ def generate_postgre_data(transaction: dict, level: int=0, parent_id: int=None):
     for tx in transaction['inner-txns']:
       generate_postgre_data(transaction=tx, level=level+1, parent_id=related_tx)
 
-################## Setup & Load data to PostgreSQL database ####################
+# Get Access Info to PostgreSQL Database
 import configparser
 import psycopg2
 
