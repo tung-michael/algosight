@@ -6,21 +6,22 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-# Step 1: Create a dataframe with your transactions
-data = {
-  'Transaction_ID': [f'Tx_{i}' for i in range(1, 11)],
-  'Volume': [i for i in range(1, 100,10)]
-}
-df = pd.DataFrame(data)
+st.subheader('Arbitrage Activities on Algorand from 09.2021 to 07.2023')
+arbitrages_profit_data = {
+  'token_name': ['ALGO', 'GARD', 'STBL', 'USDC', 'USDT'],
+  'profits_in_usd': [235825.85958885177, 0.20898541950551966, 2899.516709122528, 11755.431827941433, 1169.1385135338169],
+  'arbitrage_tx_counts': [1107629, 66, 3337, 18560, 2523]
+  }
+df = pd.DataFrame(arbitrages_profit_data)
 
-# Step 2: Create lists for labels, parents, and values
-total_volume = df['Volume'].sum()
-labels = ['Total'] + list(df['Transaction_ID'])
+# Create lists for labels, parents, and values
+total_profits = df['profits_in_usd'].sum()
+labels = ['Total'] + list(df['token_name'])
 parents = [''] + ['Total'] * len(df)
-values = [total_volume] + list(df['Volume'])
+values = [total_profits] + list(df['profits_in_usd'])
 
-# Step 3: Create the treemap
-fig = go.Figure(
+# Create the treemap
+treemap_fig = go.Figure(
   go.Treemap(
     labels=labels,
     parents=parents,
@@ -29,9 +30,19 @@ fig = go.Figure(
     hovertemplate='<b>%{label}</b><br>Volume: %{value}'
   ),
   layout={
-    'title' : 'Transactions Volume'
+    'title' : 'Arbitrage Profits in USD'
   }
 )
 
-# Step 4: Show the treemap on the Streamlit app
-st.write(fig)
+st.write(treemap_fig)
+
+bar_chart = go.Figure(
+  data=[go.Bar(
+  x=arbitrages_profit_data['token_name'],
+  y=arbitrages_profit_data['arbitrage_tx_counts'])],
+  layout={
+    'title' : 'Arbitrage Transaction Counts per Token'
+  }
+  )
+st.write(bar_chart)
+
