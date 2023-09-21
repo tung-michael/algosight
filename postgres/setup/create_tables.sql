@@ -23,3 +23,9 @@ CREATE TABLE IF NOT EXISTS algo_prices (
   as_of_date TIMESTAMP,
   rates_to_usd NUMERIC,
 );
+
+CREATE TABLE IF NOT EXISTS hot_tokens (
+  asset_id BIGINT,
+  decimals INTEGER,
+  token_name VARCHAR(100)
+);
