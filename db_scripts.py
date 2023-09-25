@@ -9,7 +9,7 @@ API_URL = 'https://mainnet-idx.algonode.cloud'
 BLOCK_ENDPOINT = '/v2/blocks/'
 BATCH_SIZE = 1000 # number of blocks fetched and processed in a batch
 
-# For data preprocessing
+# For data processing
 TX_FIELDS = [
   "id", "tx-type", "sender", "fee",
   "confirmed-round", "group", "inner-txns", "round-time"
@@ -33,11 +33,11 @@ MONGO_DB = {
   "port": 27017,
   "database": "defi_mock_db",
   "collection": "staging_transactions"
-  # "collection": "transactions"
 }
 
+  # "collection": "transactions"
 
-############## Data collection, pre-processing and ingestion (MongoDB) ###################
+############## Data collection, processing and ingestion (MongoDB) ###################
 
 # Collect raw block data from AlgoNode API
 def fetch_blocks(start: int, end: int) -> list:
@@ -60,7 +60,7 @@ def fetch_blocks(start: int, end: int) -> list:
         logging.error(f"Failed to fetch block {block_nr} after 3 attempts.")
   return data
 
-# Pre-process raw data
+# Process raw data
 def filter_tx_data(transaction: dict) -> dict:
   filtered_tx = {}
   match transaction["tx-type"]:
@@ -94,7 +94,7 @@ def filter_tx_data(transaction: dict) -> dict:
       filtered_tx[field] = "N/A"
   return filtered_tx
 
-# Collection, preprocess and ingestion to MongoDB
+# Collection, process and ingestion to MongoDB
 def collect_and_ingest(start: int, end: int, db_info: dict):
   # setup logging
   logging.basicConfig(
