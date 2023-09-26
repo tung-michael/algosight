@@ -3,8 +3,8 @@ import psycopg2
 from pandas import DataFrame
 import plotly.express as px
 import datetime
-from sql_templates import QUERY_TOP_DEXS, QUERY_TOP_TOKENS, \
-    QUERY_TRADING_VOLUME, QUERY_DEX_USAGE
+# from sql_templates import QUERY_TOP_DEXS, QUERY_TOP_TOKENS, \
+#     QUERY_TRADING_VOLUME, QUERY_DEX_USAGE
 
 DEX_LIST = ['AlgoFi', 'HumbleSwap', 'Pact', 'Tinyman AMM v.2']
 TOKEN_LIST = [
@@ -35,7 +35,7 @@ def user_date_input(key):
   with col2:
     end_date = st.date_input(f'End date', datetime.date(2023, 6, 8), key=key+"_end date")
 
-  st.info("Currently this app supports querying data between 01.06.2023 and 01.07.2023 only")
+  st.info("This app currently supports querying data between 01.06.2023 and 01.07.2023 only")
 
   if start_date > end_date:
       st.warning('End date must fall after start date.')
@@ -83,47 +83,6 @@ def display_table(data: DataFrame):
     )
   st.write(styled_df)
 
-@st.cache_data
-def load_top_dexs(user_input):
-  top_dexs_df = execute_sql_query(
-    query=QUERY_TOP_DEXS.format(
-      start_date=user_input[0],
-      end_date=user_input[1]
-    )
-  )
-  return top_dexs_df
-  # display_table(top_dexs_df)
-
-@st.cache_data
-def load_top_tokens(user_input):
-  top_tokens_df = execute_sql_query(
-    query=QUERY_TOP_TOKENS.format(
-      start_date=user_input[0],
-      end_date=user_input[1]
-    )
-  )
-  return top_tokens_df
-  # display_table(top_tokens_df)
-
-@st.cache_data
-def load_trading_volume(user_input):
-  trading_df = execute_sql_query(
-    query=QUERY_TRADING_VOLUME.format(
-      start_date=user_input[0],
-      end_date=user_input[1]
-    )
-  )
-  return trading_df
-
-@st.cache_data
-def load_dex_usage(user_input):
-  dex_usage_df = execute_sql_query(
-    query=QUERY_DEX_USAGE.format(
-      start_date=user_input[0],
-      end_date=user_input[1]
-    )
-  )
-  return dex_usage_df
 
 @st.cache_data
 def get_data_with_date_input(date_input, query: str):
