@@ -1,4 +1,4 @@
-from analytical_scripts import user_date_input, session_state_init,\
+from utilities import user_date_input, session_state_init,\
     get_data_with_date_input,TOKEN_LIST
 from sql_templates import QUERY_TOKEN_USAGE, QUERY_DETAILED_TX_COUNTS
 import streamlit as st
@@ -23,7 +23,7 @@ session_state_init(
 
 st.title("Put something creative here")
 
-# Compare Token(s) Usage during a Time Period
+# Compare Tokens Usage
 st.subheader('Tokens Usage')
 date_input_token_usage = user_date_input(key="Tokens Usage")
 st.session_state['user_options_tokens_usage'] = st.multiselect(
@@ -56,7 +56,7 @@ if st.session_state['token_usage_df'] is not None:
   st.write(fig_token_usage)
 
 
-# Token Usage on each Dex by trading frequency
+# Token traded on Dexs
 st.subheader('Token traded on DEXs')
 st.write(f'Look up which DEXs each Token is traded on')
 date_input_dexs_per_token = user_date_input(key='DEXs per Token')
@@ -99,4 +99,4 @@ if st.session_state['detailed_tx_counts'] is not None:
   st.write(fig_token_tx_counts)
 
 
-# Token Usage on each Dex by trading volume
+# Token trading volume on each Dex

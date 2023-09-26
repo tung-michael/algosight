@@ -1,10 +1,9 @@
-from analytical_scripts import user_date_input, get_data_with_date_input,\
+from utilities import user_date_input, get_data_with_date_input,\
   display_table, session_state_init
 import streamlit as st
 from sql_templates import QUERY_TOP_DEXS, QUERY_TOP_TOKENS, QUERY_TRADING_VOLUME
 import pandas as pd
 from pandas import DataFrame
-import datetime
 import plotly.express as px
 
 session_state_init(session_variable='top_dexs_df')
@@ -53,19 +52,7 @@ if st.session_state['top_tokens_df'] is not None:
   display_table(st.session_state['top_tokens_df'])
 
 
-
-
-# Trading Volume DEXs and Tokens
-# Graph: Treemap
-# parameters: from_date, to_date
-# data input:
-#   dexs: pair, app_id, platform
-#   app_calss: app_id, related_txn
-#   asset_transfer_txns: asset_id, amount, related_txn
-#   algo_prices:
-#
-# Compute Logic
-
+# DEXs Trading Volume
 
 st.subheader('DEXs Trading Volume')
 date_input_dex_trading = user_date_input('DEXs Trading Volume')

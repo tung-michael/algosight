@@ -1,4 +1,4 @@
-from analytical_scripts import user_date_input, \
+from utilities import user_date_input, \
     get_data_with_date_input, session_state_init, DEX_LIST
 import streamlit as st
 from sql_templates import QUERY_DEX_USAGE, QUERY_DEX_TRADING_VOLUME, QUERY_DETAILED_TX_COUNTS
@@ -60,8 +60,8 @@ if st.session_state['dex_usage_df'] is not None:
   st.write(fig_dex_usage)
 
 
+# DEX's Transaction Counts per Tokens
 
-# Dexs Trading Volume or Dexs Usage for each tokens ?
 st.subheader("DEX's Transaction Counts per Tokens")
 st.write(f'Look up how frequently tokens are traded on each DEX')
 date_input_tokens_on_dex = user_date_input(key='Tokens per DEX')
@@ -102,3 +102,6 @@ if st.session_state['detailed_tx_counts'] is not None:
     title=f'{session_selected_dex} Daily Transaction Counts per Token'
     )
   st.write(fig_dex_tx_counts)
+
+
+# DEXs Trading Volume per Token

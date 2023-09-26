@@ -108,8 +108,8 @@ def collect_and_ingest(start: int, end: int, db_info: dict):
   # open connection to database
   # [TODO] change to read value from db_info
   mongo_client = MongoClient("localhost", 27017)
-  mock_db = mongo_client['defi_mock_db']
-  tx_collection = mock_db['staging_transactions']
+  mg_db = mongo_client['defi_mock_db']
+  tx_collection = mg_db['staging_transactions']
 
   # crawl and load data to database
   while start < end+1:
