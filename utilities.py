@@ -35,7 +35,7 @@ def user_date_input(key):
   with col2:
     end_date = st.date_input(f'End date', datetime.date(2023, 6, 8), key=key+"_end date")
 
-  st.info("This app currently supports querying data between 01.06.2023 and 01.07.2023 only")
+  # st.info("This app currently supports querying data between 01.06.2023 and 01.07.2023 only")
 
   if start_date > end_date:
       st.warning('End date must fall after start date.')
@@ -73,7 +73,6 @@ def execute_sql_query(query:str, params=None) -> DataFrame:
     st.error(f"Error executing query: {error}")
     return DataFrame()
 
-
 def display_table(data: DataFrame):
   data.columns = [col.replace('_',' ').upper() for col in data.columns]
   styled_df = data.style.set_properties(
@@ -82,7 +81,6 @@ def display_table(data: DataFrame):
        'border-color': 'white'}
     )
   st.write(styled_df)
-
 
 @st.cache_data
 def get_data_with_date_input(date_input, query: str):
