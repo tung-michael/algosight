@@ -1,11 +1,11 @@
-CREATE TABLE IF NOT EXISTS app_calls (
+CREATE TABLE IF NOT EXISTS app_txns (
   app_id BIGINT,
   round_time TIMESTAMP,
   related_tx VARCHAR(100),
   inner_tx_level INTEGER
 );
 
-CREATE TABLE IF NOT EXISTS asset_transfer_txns (
+CREATE TABLE IF NOT EXISTS axfer_txns (
   asset_id BIGINT,
   amount NUMERIC,
   round_time TIMESTAMP,
@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS asset_transfer_txns (
   inner_tx_level INTEGER
 );
 
-CREATE TABLE IF NOT EXISTS dexes (
+CREATE TABLE IF NOT EXISTS dexs (
   pair VARCHAR(100),
   app_id BIGINT,
   platform VARCHAR(100)
