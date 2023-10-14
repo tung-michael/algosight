@@ -43,9 +43,10 @@ if __name__ == '__main__':
   )
   cursor = conn.cursor()
 
+# Example of populate table token_prices on PostgreSQL
   populate_new_table(
-    data_file="pg_data/hot_tokens.csv",
-    table_name="hot_tokens",
+    data_file="tokens_prices.csv",
+    table_name="token_prices",
     db_cursor=cursor
     )
 
