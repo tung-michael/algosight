@@ -75,11 +75,15 @@ def execute_sql_query(query:str, params=None) -> DataFrame:
 
 def display_table(data: DataFrame):
   data.columns = [col.replace('_',' ').upper() for col in data.columns]
-  styled_df = data.style.set_properties(
+  float_format = "{: .2f}".format
+  styled_df = data.style.format({
+        col: float_format for col in data.select_dtypes('float').columns
+    }).set_properties(
     **{'background-color': 'lightblue',
        'color': 'black',
-       'border-color': 'white'}
+       'border-color': 'darkgray'}
     )
+
   st.write(styled_df)
 
 @st.cache_data
