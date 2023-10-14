@@ -1,7 +1,7 @@
 
 ################### Overview page ########################
 # Top Used Dexs
-QUERY_TOP_DEXS = """
+MOST_ACTIVE_DEXS = """
 SELECT
     APP_ID,
     PLATFORM,
@@ -13,7 +13,7 @@ ORDER BY TOTAL_TX_COUNTS DESC LIMIT 10
 """
 
 # Top Traded Tokens
-QUERY_TOP_TOKENS = """
+MOST_ACTIVE_TOKENS = """
 SELECT
     ASSET_ID,
     TOKEN_NAME,
@@ -24,10 +24,9 @@ SELECT
 ORDER BY TOTAL_TX_COUNTS DESC LIMIT 10
 """
 
-################### Hot DEXs page ########################
 
-# Compare Dexs Usage
-QUERY_DEX_USAGE = """
+# DEXs Activity Track
+DEX_ACTIVITY_TRACK = """
 SELECT
     APP_ID,
     PLATFORM,
@@ -41,15 +40,13 @@ ORDER BY TX_DATE ASC
 """
 
 # Hot DEX Platforms by Trading Volume
-QUERY_DEX_TRADING_VOLUME = """
+# QUERY_DEX_TRADING_VOLUME = """
 
-"""
+# """
 
 
-################### Tokens page ########################
-
-# Compare Token(s) Usage during a Time Period
-QUERY_TOKEN_USAGE = """
+# Tokens Activity Track
+TOKEN_ACTIVITIY_TRACK = """
 SELECT
     ASSET_ID,
     TOKEN_NAME,
@@ -63,13 +60,13 @@ ORDER BY TX_DATE ASC
 """
 
 # Hot Tokens by Trading Volume during a Time Period
-QUERY_TOKEN_TRADING_VOLUME = """
+# QUERY_TOKEN_TRADING_VOLUME = """
 
-"""
+# """
 
 
-# Might be used for both trading volume treemap?
-QUERY_TRADING_VOLUME = """
+# This query is used for both Token and DEX Trading Volume metrics
+TRADING_VOLUME = """
 WITH TXNS_TOKENS_DEXS AS
 	(SELECT PLATFORM,
 			TXNS_ON_DEXS.TX_DATE,
@@ -104,8 +101,9 @@ JOIN TOKEN_PRICES ON TRANSACTION_VOLUME.TX_DATE = TOKEN_PRICES.AS_OF_DATE
 AND TRANSACTION_VOLUME.TOKEN_NAME = TOKEN_PRICES.TOKEN_NAME
 """
 
-# This query can be used for both "tokens per dex" and "dexs per token" computation
-QUERY_DETAILED_TX_COUNTS = """
+# This query is used for both "DEX's actitivity by tokens"
+# and "Token's activity by DEXs" metrics
+DETAILED_TX_COUNTS = """
 SELECT
     TOKEN_NAME,
 	  PLATFORM,
